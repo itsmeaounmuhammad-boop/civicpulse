@@ -6,7 +6,7 @@ No business rules here (those live in ComplaintService).
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.dependencies import get_complaint_service, get_rate_limiter
 from app.models import Category, Priority, Status
@@ -25,7 +25,6 @@ router = APIRouter(prefix="/api/complaints", tags=["complaints"])
 async def create_complaint(
     body: ComplaintCreate,
     request: Request,
-    response: Response,
     service: Annotated[ComplaintService, Depends(get_complaint_service)],
     rate_limiter: Annotated[RedisRateLimiter, Depends(get_rate_limiter)],
 ):
@@ -33,13 +32,15 @@ async def create_complaint(
     try:
         await rate_limiter.check(client_ip)
     except RateLimitExceeded as exc:
-        response.headers["Retry-After"] = str(exc.retry_after_seconds)
-        raise HTTPException(status_code=429, detail="Rate limit exceeded") from exc
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
 
-    complaint = await service.create_complaint(
+    return await service.create_complaint(
         text=body.text, location=body.location, reporter_contact=body.reporter_contact
     )
-    return complaint
 
 
 @router.get("/{complaint_id}", response_model=ComplaintOut)

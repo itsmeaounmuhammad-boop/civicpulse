@@ -5,7 +5,9 @@ CivicPulse FastAPI application entrypoint.
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
 from app.config import get_settings
@@ -30,12 +32,11 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown (SIGTERM handling) ---
-    # Uvicorn's own graceful-shutdown machinery stops accepting new
-    # connections and waits for in-flight requests to finish before this
-    # block runs. Here we close the resources those requests were using,
-    # so a rolling Kubernetes update never leaves a dangling connection.
+    # Uvicorn stops accepting new connections and waits for in-flight
+    # requests to finish before this block runs. Here we close the
+    # resources those requests were using.
     logger.info("application shutdown initiated, draining connections")
-    await app.state.redis.close()
+    await app.state.redis.aclose()
     await app.state.db_engine.dispose()
     logger.info("application shutdown complete")
 
@@ -46,6 +47,26 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    The API contract requires 400 with a field-level error body,
+    not FastAPI's default 422.
+    """
+    errors = [
+        {
+            "field": ".".join(str(part) for part in err["loc"] if part != "body"),
+            "message": err["msg"],
+        }
+        for err in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "Validation failed", "errors": errors},
+    )
+
 
 app.add_middleware(RequestIDMiddleware)
 
