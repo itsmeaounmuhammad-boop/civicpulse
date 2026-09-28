@@ -1,8 +1,6 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
-// The frontend only ever calls a relative "/api". In dev this proxy forwards it
-// to the backend; in Compose/Kubernetes nginx does the same job (ADR-0002).
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -14,5 +12,11 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./tests/setup.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
   },
 });
