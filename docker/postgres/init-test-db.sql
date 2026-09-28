@@ -1,0 +1,1 @@
+CREATE DATABASE civicpulse_test;
