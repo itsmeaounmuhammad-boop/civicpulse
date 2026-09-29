@@ -87,6 +87,7 @@ jobs:
         uses: helm/kind-action@v1.10.0
         with:
           cluster_name: civicpulse-ci
+          config: k8s/kind-config.yaml
 
       - name: Set up kustomize
         uses: imranismail/setup-kustomize@v2
@@ -97,7 +98,13 @@ jobs:
           kubectl wait --namespace ingress-nginx \
             --for=condition=ready pod \
             --selector=app.kubernetes.io/component=controller \
-            --timeout=120s
+            --timeout=180s
+
+      - name: Debug ingress on failure
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl describe pod -n ingress-nginx -l app.kubernetes.io/component=controller
 
       - name: Set real values in prod overlay
         working-directory: k8s/overlays/prod
