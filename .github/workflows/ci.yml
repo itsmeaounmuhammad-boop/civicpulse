@@ -170,9 +170,9 @@ jobs:
           kustomize build . > /tmp/prod-manifests.yaml
 
       - name: kubeconform
-        uses: docker://ghcr.io/yannh/kubeconform:latest
-        with:
-          args: -summary -strict /tmp/prod-manifests.yaml
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -summary -strict /tmp/prod-manifests.yaml
 
   integration:
     runs-on: ubuntu-latest
