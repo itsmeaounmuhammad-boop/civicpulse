@@ -22,7 +22,7 @@ flowchart TB
     LLM -->|timeout/429/bad JSON| Rules[RuleBasedTriage fallback]
 ```
 
-## Quickstart
+## Quickstart Step
 cp .env.example .env
 
 edit .env: set POSTGRES_PASSWORD at minimum
