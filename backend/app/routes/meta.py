@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Response
 
 from app.config import Settings, get_settings
 from app.dependencies import get_complaint_service
-from app.schemas import ProvidersMetaOut, StatsOut
+from app.schemas import ProvidersMetaOut, StatsOut, TriageOutcomeOut
 from app.services.complaint_service import ComplaintService
 
 router = APIRouter(prefix="/api", tags=["meta"])
@@ -30,4 +30,7 @@ async def get_providers_meta(
     settings: Annotated[Settings, Depends(get_settings)],
 ):
     outcomes = await service.get_recent_outcomes()
-    return ProvidersMetaOut(active_provider=settings.triage_provider, recent_outcomes=outcomes)
+    return ProvidersMetaOut(
+        active_provider=settings.triage_provider,
+        recent_outcomes=[TriageOutcomeOut(**outcome) for outcome in outcomes],
+    )

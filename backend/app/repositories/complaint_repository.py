@@ -85,7 +85,7 @@ class ComplaintRepository:
         complaint = await self.get_by_id(complaint_id)
         if complaint is None:
             return None
-        complaint.status = new_status.value
+        complaint.status = new_status
         await self.session.commit()
         await self.session.refresh(complaint)
         return complaint
