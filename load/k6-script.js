@@ -4,7 +4,7 @@ import { check, sleep } from "k6";
 export const options = {
   stages: [
     { duration: "1m", target: 20 },   // ramp up
-    { duration: "3m", target: 100 },  // sustained load — should trigger HPA
+    { duration: "3m", target: 300 },  // sustained load — should trigger HPA
     { duration: "1m", target: 0 },    // ramp down
   ],
   thresholds: {
