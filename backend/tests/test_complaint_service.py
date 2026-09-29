@@ -4,7 +4,6 @@ ComplaintService tests — status state machine.
 
 import pytest
 
-from app.dependencies import get_complaint_service
 from app.models import Status
 from app.services.complaint_service import InvalidTransitionError
 

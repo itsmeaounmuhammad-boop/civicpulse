@@ -10,8 +10,8 @@ import json
 import httpx
 from pydantic import ValidationError
 
-from app.schemas import TriageResult
 from app.providers.triage.llm import _SYSTEM_PROMPT
+from app.schemas import TriageResult
 
 
 class OllamaTriage:
