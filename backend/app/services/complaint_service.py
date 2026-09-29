@@ -5,7 +5,7 @@ No SQL here, no HTTP concerns here.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from redis.asyncio import Redis
@@ -122,7 +122,7 @@ class ComplaintService:
             "provider": outcome.triaged_by,
             "latency_ms": outcome.latency_ms,
             "fallback": outcome.was_fallback,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         await self.redis.lpush(_RECENT_OUTCOMES_KEY, json.dumps(entry))
         await self.redis.ltrim(_RECENT_OUTCOMES_KEY, 0, _RECENT_OUTCOMES_MAX - 1)
