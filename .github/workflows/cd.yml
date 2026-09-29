@@ -100,12 +100,6 @@ jobs:
             --selector=app.kubernetes.io/component=controller \
             --timeout=180s
 
-      - name: Debug ingress on failure
-        if: failure()
-        run: |
-          kubectl get pods -A
-          kubectl describe pod -n ingress-nginx -l app.kubernetes.io/component=controller
-
       - name: Set real values in prod overlay
         working-directory: k8s/overlays/prod
         run: |
@@ -131,35 +125,19 @@ jobs:
           kubectl rollout status deployment/backend -n civicpulse --timeout=180s
           kubectl rollout status deployment/frontend -n civicpulse --timeout=180s
 
+      - name: Smoke test via port-forward
+        run: |
+          kubectl port-forward -n civicpulse svc/frontend 8080:8080 &
+          curl -sf --retry 10 --retry-delay 2 --retry-connrefused http://localhost:8080/healthz
+          curl -sf http://localhost:8080/api/stats
+
+      - name: Print HPA state
+        run: kubectl get hpa -n civicpulse
+
       - name: Debug on failure
         if: failure()
         run: |
           kubectl get pods -A
+          kubectl describe pod -n ingress-nginx -l app.kubernetes.io/component=controller || true
           kubectl logs job/backend-migrate -n civicpulse || true
           kubectl logs deployment/backend -n civicpulse --tail=50 || true
-
-      - name: Smoke test via port-forward
-        run: |
-          set -euo pipefail
-
-          kubectl port-forward -n civicpulse svc/frontend 8080:8080 &
-          PF_PID=$!
-          trap 'kill $PF_PID 2>/dev/null || true' EXIT
-
-          # Poll until the tunnel actually accepts connections (no fixed sleep).
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8080/healthz >/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-
-          echo "--- /healthz ---"
-          curl -sSf http://localhost:8080/healthz
-
-          echo
-          echo "--- /api/stats ---"
-          curl -sSf http://localhost:8080/api/stats | tee /tmp/stats.json
-
-      - name: Print HPA state
-        run: kubectl get hpa -n civicpulse
