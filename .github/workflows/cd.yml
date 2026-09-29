@@ -125,10 +125,18 @@ jobs:
       - name: Apply manifests
         run: kubectl apply -k k8s/overlays/prod
 
-      - name: Wait for rollout
+      - name: Wait for migration and rollout
         run: |
+          kubectl wait --for=condition=complete job/backend-migrate -n civicpulse --timeout=180s
           kubectl rollout status deployment/backend -n civicpulse --timeout=180s
           kubectl rollout status deployment/frontend -n civicpulse --timeout=180s
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl logs job/backend-migrate -n civicpulse || true
+          kubectl logs deployment/backend -n civicpulse --tail=50 || true
 
       - name: Smoke test via port-forward
         run: |
