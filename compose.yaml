@@ -1,0 +1,162 @@
+name: civicpulse
+
+# Shared by the backend and the one-shot migrate job.
+x-backend: &backend
+  build:
+    context: ./backend
+    target: dev
+  image: civicpulse-backend:dev
+  environment:
+    ENVIRONMENT: ${ENVIRONMENT:-development}
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB}
+    REDIS_URL: redis://redis:6379/0
+    TRIAGE_PROVIDER: ${TRIAGE_PROVIDER:-simulated}
+    GROQ_API_KEY: ${GROQ_API_KEY:-}
+    GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+    OLLAMA_BASE_URL: http://ollama:11434
+    OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
+    RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
+    TEST_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/civicpulse_test
+    TEST_REDIS_URL: redis://redis:6379/1
+    WATCHFILES_FORCE_POLLING: "true"
+  volumes:
+    # DEV ONLY: source bind mount for hot reload. Wrong for prod: the image must
+    # contain exactly the code that was tested, not whatever is on the host.
+    - ./backend:/app
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+    image: civicpulse-frontend:dev
+    ports:
+      - "8080:8080"
+    networks: [edge]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+  backend:
+    <<: *backend
+    ports:
+      - "8000:8000"
+    networks: [edge, internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # One-shot job: apply migrations, then load the idempotent seed. Exits when done.
+  migrate:
+    <<: *backend
+    command: ["sh", "-c", "alembic upgrade head && python -m scripts.seed"]
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  postgres:
+    image: postgres:16.6
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-test-db.sql:/docker-entrypoint-initdb.d/01-init-test-db.sql:ro
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  redis:
+    image: redis:7.4.1-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+  # Opt-in: docker compose --profile ollama up -d
+  # On `edge` (not `internal`) because it must reach the internet to pull the model.
+  ollama:
+    image: ollama/ollama:0.5.4
+    profiles: ["ollama"]
+    volumes:
+      - ollama_models:/root/.ollama
+    networks: [edge]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 3G
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  # PostgreSQL data directory: the durable one. `down` then `up` must keep every row.
+  pgdata:
+  # Redis AOF. Justification for ENGINEERING-NOTES: a cold cache after every restart
+  # means every duplicate complaint pays for inference again, and it keeps the recent
+  # triage-outcomes list that /api/meta/providers reads. The cost is a few MB of disk.
+  redisdata:
+  # Model weights, so the ~1 GB Ollama model is not re-pulled on every `up`.
+  ollama_models:
