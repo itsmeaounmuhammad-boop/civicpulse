@@ -121,7 +121,8 @@ jobs:
         run: docker build -t civicpulse-frontend:ci ./frontend
 
       - name: Report image sizes
-        run: docker images civicpulse-backend:ci civicpulse-frontend:ci --format "{{.Repository}}: {{.Size}}"
+        run: |
+          docker images civicpulse-backend:ci civicpulse-frontend:ci --format "{{.Repository}}: {{.Size}}"
 
   scan:
     runs-on: ubuntu-latest
